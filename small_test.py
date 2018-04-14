@@ -8,7 +8,7 @@
 
     Class: N=0, P=1
 """
-from mdl_tree import BinaryMDLTreeClassifier
+from binary_mdl_tree import BinaryMDLTreeClassifier
 import numpy as np
 
 data = np.array(

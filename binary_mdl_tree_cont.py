@@ -9,11 +9,12 @@ def L(n, k, b):
 
 
 class DTLeaf(object):
-    def __init__(self, parent, input_data, labels, max_depth, c):
+    def __init__(self, parent, input_data, labels, attr_continuous, max_depth, c):
         self.input_data = input_data
         self.labels = labels
         self.parent = parent
         self.max_depth = max_depth
+        self.attr_continuous = attr_continuous
         self.c = c
 
         # Count the number of each class
@@ -72,7 +73,7 @@ class DTLeaf(object):
         min_mdl = 0
         best_node = None
         for attr_index in range(self.input_data.shape[1]):
-            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.max_depth, self.c)
+            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.attr_continuous, self.max_depth, self.c)
             cost = node.get_recursive_cost()
             if best_node is None or min_mdl > cost:
                 best_node = node
@@ -98,9 +99,10 @@ class DTLeaf(object):
 
 
 class DTNode(object):
-    def __init__(self, parent, attr_index, input_data, labels, max_depth, c):
+    def __init__(self, parent, attr_index, input_data, labels, attr_continuous, max_depth, c):
         """
         Initializes a decision node.
+        :param attr_continuous: A-d' long boolean array specifying which attribute is continuous
         :param attr_index: The attribute to split on
         :param input_data: The input data, an Nx(A-d') numpy array containing the UNTESTED attributes for N samples
         :param labels: The labels for these N samples
@@ -111,11 +113,17 @@ class DTNode(object):
         self.attr_index = attr_index
         self.split_data = {}
         self.max_depth = max_depth
+        self.attr_continuous = attr_continuous
         self.c = c
+        self.continuous = attr_continuous[attr_index]
+
+        if self.continuous:
+            self.threshold = self._find_threshold()
 
         N = input_data.shape[0]
         for i in range(N):
             x, label = input_data[i], labels[i]
+            # TODO: Implement more continuous stuff
             attribute_value = x[attr_index]
             if attribute_value in self.split_data:
                 # Add the input data row to the input data of the specific child without the already tested attribute x[attr_index]
@@ -128,7 +136,7 @@ class DTNode(object):
                 )
         self.children = {}
         for k, v in self.split_data.items():
-            self.children[k] = DTLeaf(self, np.array(v[0]), np.array(v[1]), max_depth-1, c)
+            self.children[k] = DTLeaf(self, np.array(v[0]), np.array(v[1]), attr_continuous, max_depth-1, c)
 
         # Count the number of each class
         self.class_counts = np.zeros((2,))
@@ -143,7 +151,9 @@ class DTNode(object):
             The number of bits necessary to encode the attribute: lg(A - d')
         :return: The cost of encoding this decision node
         """
-        return 1 + lg(self.input_data.shape[1])
+        values = self.input_data[:, self.attr_index]
+        m = len(set(values))
+        return 1 + lg(self.input_data.shape[1]) + lg(m**0.5) if self.continuous else 0
 
     def get_recursive_cost(self):
         """
@@ -193,12 +203,12 @@ class DTNode(object):
                 pruned = child.prune(verbose)
                 any_pruned = any_pruned or pruned
                 if pruned:
-                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.max_depth-1, self.c)
+                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.attr_continuous, self.max_depth-1, self.c)
             else:
                 any_pruned = True
         if any_pruned:
             own_cost = self.get_recursive_cost()
-            leaf = DTLeaf(self.parent, self.input_data, self.labels, self.max_depth, self.c)
+            leaf = DTLeaf(self.parent, self.input_data, self.labels, self.attr_continuous, self.max_depth, self.c)
             pruned_cost = leaf.get_cost()
             if pruned_cost < own_cost:
                 if verbose:
@@ -212,8 +222,67 @@ class DTNode(object):
             child_str += str(child) + " "
         return "<Node x[%d] %s>"%(self.attr_index, child_str)
 
+    def _find_threshold(self):
+        """
+        Quoting the paper:
+            "A second approach is to select approximately sqrt(m)
+            (where m denotes the number of distinct values) evenly spaced values from the sorted list of values
+            , and to use lg(sqrt(m)) bits to indicate which one to use as a cut-point.
+             "
+        :return: The used threshold value
+        """
+        values = self.input_data[:, self.attr_index]
+        m = len(set(values))
 
-class BinaryMDLTreeClassifier(object):
+        sort = np.argsort(values)
+        s_values = values[sort]
+        s_labels = self.labels[sort]
+        threshold_values = np.mean(np.array([s_values[:-1], s_values[1:]]), axis=0)
+        # Pick only sqrt(m) distinct values:
+        step_size = s_values.shape[0]//(m**0.5)
+        threshold_values = threshold_values[::step_size]
+
+        n_class_1 = np.sum(self.labels)
+        n_class_0 = self.labels.shape[0] - n_class_1
+
+        min_cost = 0
+        min_threshold = None
+
+        for i, t in enumerate(threshold_values):
+            label_index = i*step_size
+            classes_left = np.zeros((2,))
+            classes_left[1] = np.sum(s_labels[:label_index+1])
+            classes_left[0] = label_index - classes_left[1]
+
+            classes_right = np.zeros((2,))
+            classes_right[1] = n_class_1 - classes_left[1]
+            classes_right[0] = n_class_0 - classes_left[0]
+
+            class_left = np.argmax(classes_left)
+            class_right = np.argmax(classes_right)
+
+            # Cost of left leaf:
+            n = label_index  # Number of total values up to the threshold
+            k = classes_left[1-class_left]  # Number of wrongly classified classes
+            b = (n + 1) // 2
+            exception_cost = L(n, k, b)
+
+            # Cost of right leaf:
+            n = s_labels.shape[0] - label_index  # Number of total values above or equal to the threshold
+            k = classes_right[1-class_right]  # Number of wrongly classified classes
+            b = (n + 1) // 2
+            exception_cost += L(n, k, b)
+
+            if min_threshold is None or exception_cost < min_cost:
+                min_threshold = t
+                min_cost = exception_cost
+        return min_threshold
+
+
+
+
+
+class BinaryContinuousMDLTreeClassifier(object):
     """
         This class models a Minimum Description Length (MDL) based Decision Tree Classifier For 2 Classes
     """
@@ -228,16 +297,17 @@ class BinaryMDLTreeClassifier(object):
         self.tree = None
         self.max_depth = max_depth
 
-    def fit(self, input_data, labels, verbose=False, print_full_pruning=False):
+    def fit(self, input_data, labels, attr_continuous, verbose=False, print_full_pruning=False):
         """
         Induces a decision tree on the given data.
         This method can only be called once.
+        :param attr_continuous: Defines which attributes are continuous
         :param print_full_pruning: Print full pruning process
         :param verbose: Print extra information
         :param input_data: An NxA numpy array (Matrix) with N samples each having A attributes
         :param labels: An N long numpy array containing the output class of each sample in input_data
         """
-        tree = DTLeaf(None, input_data, labels, self.max_depth, self.c)
+        tree = DTLeaf(None, input_data, labels, attr_continuous, self.max_depth, self.c)
         tree = tree.expand()
         self.tree = tree
         self._prune(verbose, print_full_pruning)
@@ -259,7 +329,7 @@ class BinaryMDLTreeClassifier(object):
             print("Tree cost before pruning: ", self.tree.get_recursive_cost())
         pruned = self.tree.prune(print_full)
         if pruned:
-            self.tree = DTLeaf(None, self.tree.input_data, self.tree.labels, self.max_depth, self.c)
+            self.tree = DTLeaf(None, self.tree.input_data, self.tree.labels, self.tree.attr_continuous, self.max_depth, self.c)
         if verbose:
             print("Tree cost after pruning: ", self.tree.get_recursive_cost())
 
