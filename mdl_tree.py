@@ -9,11 +9,12 @@ def L(n, k, b):
 
 
 class DTLeaf(object):
-    def __init__(self, parent, input_data, labels, max_depth):
+    def __init__(self, parent, input_data, labels, max_depth, c):
         self.input_data = input_data
         self.labels = labels
         self.parent = parent
         self.max_depth = max_depth
+        self.c = c
 
         # Count the number of each class
         self.class_counts = np.zeros((2,))
@@ -43,10 +44,11 @@ class DTLeaf(object):
         Returns the encoding cost of this leaf. This is calculated as the sum of:
             The preceding 0-bit indicating that this is a leaf node in the proposed encoding of the tree
             The default class of the leaf, which would only take one bit in a binary classification problem
-            The length required to encode the exceptions, L(n, k, b) described elsewhere in this class
+            The length required to encode the exceptions, L(n, k, b) described elsewhere in this class.
+            This is done times c according to the paper, to allow for larger trees.
         :return: The total encoding cost of this specific leaf
         """
-        return 2 + self.exception_cost
+        return 2 + self.c * self.exception_cost
 
     def get_recursive_cost(self):
         """
@@ -70,18 +72,15 @@ class DTLeaf(object):
         min_mdl = 0
         best_node = None
         for attr_index in range(self.input_data.shape[1]):
-            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.max_depth)
+            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.max_depth, self.c)
             cost = node.get_recursive_cost()
-            print("Cost : %d, Config: %s"%(cost, str(node)))
             if best_node is None or min_mdl > cost:
                 best_node = node
                 min_mdl = cost
         return best_node
 
     def expand(self):
-        print("Expanding ", self)
         replacement = self.split()
-        print("Replacement: ", replacement)
         if replacement is not None:
             if self.parent is not None:
                 self.parent.replace(self, replacement)
@@ -90,12 +89,16 @@ class DTLeaf(object):
         else:
             return self
 
+    def prune(self, verbose=False):
+        # The leafs cannot be pruned away
+        return True
+
     def __str__(self):
         return "<Leaf c:%d N:%d>"%(self.leaf_class, self.input_data.shape[0])
 
 
 class DTNode(object):
-    def __init__(self, parent, attr_index, input_data, labels, max_depth):
+    def __init__(self, parent, attr_index, input_data, labels, max_depth, c):
         """
         Initializes a decision node.
         :param attr_index: The attribute to split on
@@ -107,6 +110,8 @@ class DTNode(object):
         self.parent = parent
         self.attr_index = attr_index
         self.split_data = {}
+        self.max_depth = max_depth
+        self.c = c
 
         N = input_data.shape[0]
         for i in range(N):
@@ -123,7 +128,7 @@ class DTNode(object):
                 )
         self.children = {}
         for k, v in self.split_data.items():
-            self.children[k] = DTLeaf(self, np.array(v[0]), np.array(v[1]), max_depth-1)
+            self.children[k] = DTLeaf(self, np.array(v[0]), np.array(v[1]), max_depth-1, c)
 
         # Count the number of each class
         self.class_counts = np.zeros((2,))
@@ -173,6 +178,34 @@ class DTNode(object):
                 break
         self.children[key] = new_child
 
+    def prune(self, verbose=False):
+        """
+        Check if this node has to be pruned.
+        This happens in 2 steps:
+            1. Recursively call this on all children
+            2. If the children return true, meaning they're either a leaf or will became a leaf,
+                check if this node needs pruning
+        :return: true if this node is pruned (or a leaf), false if not
+        """
+        any_pruned = False
+        for key, child in self.children.items():
+            if type(child) == DTNode:
+                pruned = child.prune(verbose)
+                any_pruned = any_pruned or pruned
+                if pruned:
+                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.max_depth-1, self.c)
+            else:
+                any_pruned = True
+        if any_pruned:
+            own_cost = self.get_recursive_cost()
+            leaf = DTLeaf(self.parent, self.input_data, self.labels, self.max_depth, self.c)
+            pruned_cost = leaf.get_cost()
+            if pruned_cost < own_cost:
+                if verbose:
+                    print("Reducing cost with %f bits by pruning %s"%(own_cost - pruned_cost, self))
+                return True
+        return False
+
     def __str__(self):
         child_str = ""
         for child in self.children.values():
@@ -195,16 +228,20 @@ class BinaryMDLTreeClassifier(object):
         self.tree = None
         self.max_depth = max_depth
 
-    def fit(self, input_data, labels):
+    def fit(self, input_data, labels, verbose=False, print_full_pruning=False):
         """
         Induces a decision tree on the given data.
         This method can only be called once.
+        :param print_full_pruning: Print full pruning process
+        :param verbose: Print extra information
         :param input_data: An NxA numpy array (Matrix) with N samples each having A attributes
         :param labels: An N long numpy array containing the output class of each sample in input_data
         """
-        tree = DTLeaf(None, input_data, labels, self.max_depth)
+        tree = DTLeaf(None, input_data, labels, self.max_depth, self.c)
         tree = tree.expand()
         self.tree = tree
+        self._prune(verbose, print_full_pruning)
+
 
     def predict(self, input_data):
         """
@@ -216,6 +253,15 @@ class BinaryMDLTreeClassifier(object):
         for x in input_data:
             prediction.append(self.tree.predict(x))
         return np.array(prediction)
+
+    def _prune(self, verbose=False, print_full=False):
+        if verbose:
+            print("Tree cost before pruning: ", self.tree.get_recursive_cost())
+        pruned = self.tree.prune(print_full)
+        if pruned:
+            self.tree = DTLeaf(None, self.tree.input_data, self.tree.labels, self.max_depth, self.c)
+        if verbose:
+            print("Tree cost after pruning: ", self.tree.get_recursive_cost())
 
     def __str__(self):
         return str(self.tree)

@@ -33,6 +33,10 @@ data = np.array(
 X = data[:, :-1]
 Y = data[:, -1]
 
-tree = BinaryMDLTreeClassifier(1, max_depth=1000)
-tree.fit(X, Y)
-print(tree)
+for c in range(1, 10, 2):
+    print("Tree for c=", c)
+    tree = BinaryMDLTreeClassifier(c, max_depth=1000)
+    tree.fit(X, Y, verbose=True, print_full_pruning=False)
+    print(tree)
+    print()
+
