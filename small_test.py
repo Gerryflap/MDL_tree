@@ -1,5 +1,5 @@
 """
-    This is a test with the dataset used in the paper
+    This is a test with the dataset used in the paper.
 
     Outlook: 0=sunny, 1=overcast, 2=rain
     Temperature: 0=hot, 1=mild, 2=cool
