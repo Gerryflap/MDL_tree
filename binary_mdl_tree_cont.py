@@ -76,6 +76,7 @@ class DTLeaf(object):
             This is done times c according to the paper, to allow for larger trees.
         :return: The total encoding cost of this specific leaf
         """
+        # print("Leaf cost: ", 2 + self.c * self.exception_cost)
         return 2 + self.c * self.exception_cost
 
     def get_recursive_cost(self):
@@ -125,6 +126,9 @@ class DTLeaf(object):
     def __str__(self):
         return "<Leaf c:%d N:%d>" % (self.leaf_class, self.input_data.shape[0])
 
+    def __len__(self):
+        return 1
+
 
 class DTNode(object):
     def __init__(self, parent, attr_index, input_data, labels, attr_continuous, max_depth, c):
@@ -135,6 +139,9 @@ class DTNode(object):
         :param input_data: The input data, an Nx(A-d') numpy array containing the UNTESTED attributes for N samples
         :param labels: The labels for these N samples
         """
+        if input_data.shape[1] != attr_continuous.shape[0]:
+            raise ValueError("Dim mismatch, data contains %d attributes, attr_cont contains %d"%(input_data.shape[1], attr_continuous.shape[0]))
+
         self.input_data = input_data
         self.labels = labels
         self.parent = parent
@@ -191,7 +198,7 @@ class DTNode(object):
         """
         values = self.input_data[:, self.attr_index]
         m = len(set(values))
-        return 1 + lg(self.input_data.shape[1]) + lg(m ** 0.5) if self.continuous else 0
+        return 1 + lg(self.input_data.shape[1]) + (lg(m ** 0.5) if self.continuous else 0)
 
     def get_recursive_cost(self):
         """
@@ -204,11 +211,20 @@ class DTNode(object):
         return cost
 
     def predict(self, x):
+        """
+        Predicts the class of the incoming data point
+        Unseen attribute values are forwarded to the first child in the set of children.
+        :param x: A list of A - d' attributes representing a datapoint
+        :return: The predicted class
+        """
         if self.continuous:
             attr_value = x[self.attr_index] >= self.threshold
         else:
             attr_value = x[self.attr_index]
-        child = self.children[attr_value]
+        if attr_value not in self.children:
+            child = list(self.children.values())[0]
+        else:
+            child = self.children[attr_value]
         return child.predict(np.delete(x, self.attr_index))
 
     def get_children(self):
@@ -244,7 +260,7 @@ class DTNode(object):
                 pruned = child.prune(verbose)
                 any_pruned = any_pruned or pruned
                 if pruned:
-                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.attr_continuous,
+                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.attr_cont_reduced,
                                                 self.max_depth - 1, self.c)
             else:
                 any_pruned = True
@@ -325,6 +341,9 @@ class DTNode(object):
                 min_cost = exception_cost
         return min_threshold
 
+    def __len__(self):
+        return sum([len(child) for child in self.children.values()])
+
 
 class BinaryContinuousMDLTreeClassifier(object):
     """
@@ -376,6 +395,9 @@ class BinaryContinuousMDLTreeClassifier(object):
                                self.c)
         if verbose:
             print("Tree cost after pruning: ", self.tree.get_recursive_cost())
+
+    def __len__(self):
+        return len(self.tree)
 
     def __str__(self):
         return str(self.tree)
