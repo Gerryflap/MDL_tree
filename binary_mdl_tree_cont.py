@@ -5,7 +5,34 @@ lg = np.log2
 
 
 def L(n, k, b):
-    return lg(b + 1) + lg(comb(n, k, exact=True))
+    n, k, b = int(n), int(k), int(b)
+    ret = lg(b + 1) + lgcomb(n, k)
+    if ret == np.nan:
+        print("NaN in L function for n,k,b: ", n,k,b)
+    return ret
+
+
+def log2fact(x):
+    """
+    Computes lg(x!) using a summation of logs instead of a log of a product.
+    This ensures numerical stability for way larger values of x
+    :param x: Value of x (integer, no numpy array!)
+    :return: log2(x!)
+    """
+    if not (type(x) == int):
+        print("Converted %s to int in log2fact!" % (str(type(x))))
+        x = int(x)
+    return sum([lg(i) for i in range(1,x)])
+
+
+def lgcomb(n, k):
+    """
+    Computes the 2-log of n over k. This uses log calculations for numerical stability
+    :param n: n
+    :param k: k
+    :return: lg(n over k)
+    """
+    return log2fact(n) - log2fact(k) - log2fact(n - k)
 
 
 class DTLeaf(object):
@@ -73,7 +100,8 @@ class DTLeaf(object):
         min_mdl = 0
         best_node = None
         for attr_index in range(self.input_data.shape[1]):
-            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.attr_continuous, self.max_depth, self.c)
+            node = DTNode(self.parent, attr_index, self.input_data, self.labels, self.attr_continuous, self.max_depth,
+                          self.c)
             cost = node.get_recursive_cost()
             if best_node is None or min_mdl > cost:
                 best_node = node
@@ -95,7 +123,7 @@ class DTLeaf(object):
         return True
 
     def __str__(self):
-        return "<Leaf c:%d N:%d>"%(self.leaf_class, self.input_data.shape[0])
+        return "<Leaf c:%d N:%d>" % (self.leaf_class, self.input_data.shape[0])
 
 
 class DTNode(object):
@@ -114,6 +142,8 @@ class DTNode(object):
         self.split_data = {}
         self.max_depth = max_depth
         self.attr_continuous = attr_continuous
+        # The the attr_continuous array with the currently used attribute removed
+        self.attr_cont_reduced = np.delete(attr_continuous, attr_index)
         self.c = c
         self.continuous = attr_continuous[attr_index]
 
@@ -123,8 +153,10 @@ class DTNode(object):
         N = input_data.shape[0]
         for i in range(N):
             x, label = input_data[i], labels[i]
-            # TODO: Implement more continuous stuff
-            attribute_value = x[attr_index]
+            if self.continuous:
+                attribute_value = x[attr_index] >= self.threshold
+            else:
+                attribute_value = x[attr_index]
             if attribute_value in self.split_data:
                 # Add the input data row to the input data of the specific child without the already tested attribute x[attr_index]
                 self.split_data[attribute_value][0].append(np.delete(x, attr_index))
@@ -136,7 +168,13 @@ class DTNode(object):
                 )
         self.children = {}
         for k, v in self.split_data.items():
-            self.children[k] = DTLeaf(self, np.array(v[0]), np.array(v[1]), attr_continuous, max_depth-1, c)
+            self.children[k] = DTLeaf(
+                self, np.array(v[0]),
+                np.array(v[1]),
+                np.delete(attr_continuous, attr_index),
+                max_depth - 1,
+                c
+            )
 
         # Count the number of each class
         self.class_counts = np.zeros((2,))
@@ -153,7 +191,7 @@ class DTNode(object):
         """
         values = self.input_data[:, self.attr_index]
         m = len(set(values))
-        return 1 + lg(self.input_data.shape[1]) + lg(m**0.5) if self.continuous else 0
+        return 1 + lg(self.input_data.shape[1]) + lg(m ** 0.5) if self.continuous else 0
 
     def get_recursive_cost(self):
         """
@@ -166,9 +204,12 @@ class DTNode(object):
         return cost
 
     def predict(self, x):
-        attr_value = x[self.attr_index]
+        if self.continuous:
+            attr_value = x[self.attr_index] >= self.threshold
+        else:
+            attr_value = x[self.attr_index]
         child = self.children[attr_value]
-        child.predict(np.delete(x, self.attr_index))
+        return child.predict(np.delete(x, self.attr_index))
 
     def get_children(self):
         return list(self.children.values())
@@ -203,7 +244,8 @@ class DTNode(object):
                 pruned = child.prune(verbose)
                 any_pruned = any_pruned or pruned
                 if pruned:
-                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.attr_continuous, self.max_depth-1, self.c)
+                    self.children[key] = DTLeaf(self, child.input_data, child.labels, self.attr_continuous,
+                                                self.max_depth - 1, self.c)
             else:
                 any_pruned = True
         if any_pruned:
@@ -212,7 +254,7 @@ class DTNode(object):
             pruned_cost = leaf.get_cost()
             if pruned_cost < own_cost:
                 if verbose:
-                    print("Reducing cost with %f bits by pruning %s"%(own_cost - pruned_cost, self))
+                    print("Reducing cost with %f bits by pruning %s" % (own_cost - pruned_cost, self))
                 return True
         return False
 
@@ -220,7 +262,11 @@ class DTNode(object):
         child_str = ""
         for child in self.children.values():
             child_str += str(child) + " "
-        return "<Node x[%d] %s>"%(self.attr_index, child_str)
+        if self.continuous:
+            ret = "<Node x[%d]>=%d %s>" % (self.attr_index, self.threshold, child_str)
+        else:
+            ret = "<Node x[%d] %s>" % (self.attr_index, child_str)
+        return ret
 
     def _find_threshold(self):
         """
@@ -232,14 +278,15 @@ class DTNode(object):
         :return: The used threshold value
         """
         values = self.input_data[:, self.attr_index]
-        m = len(set(values))
+        m = len(np.unique(values))
 
         sort = np.argsort(values)
         s_values = values[sort]
         s_labels = self.labels[sort]
-        threshold_values = np.mean(np.array([s_values[:-1], s_values[1:]]), axis=0)
+        # threshold_values = np.mean(np.array([s_values[:-1], s_values[1:]]), axis=0)
+        threshold_values = s_values
         # Pick only sqrt(m) distinct values:
-        step_size = s_values.shape[0]//(m**0.5)
+        step_size = int(s_values.shape[0] // (m ** 0.5))
         threshold_values = threshold_values[::step_size]
 
         n_class_1 = np.sum(self.labels)
@@ -249,9 +296,9 @@ class DTNode(object):
         min_threshold = None
 
         for i, t in enumerate(threshold_values):
-            label_index = i*step_size
+            label_index = i * step_size
             classes_left = np.zeros((2,))
-            classes_left[1] = np.sum(s_labels[:label_index+1])
+            classes_left[1] = np.sum(s_labels[:label_index + 1])
             classes_left[0] = label_index - classes_left[1]
 
             classes_right = np.zeros((2,))
@@ -263,13 +310,13 @@ class DTNode(object):
 
             # Cost of left leaf:
             n = label_index  # Number of total values up to the threshold
-            k = classes_left[1-class_left]  # Number of wrongly classified classes
+            k = classes_left[1 - class_left]  # Number of wrongly classified classes
             b = (n + 1) // 2
             exception_cost = L(n, k, b)
 
             # Cost of right leaf:
             n = s_labels.shape[0] - label_index  # Number of total values above or equal to the threshold
-            k = classes_right[1-class_right]  # Number of wrongly classified classes
+            k = classes_right[1 - class_right]  # Number of wrongly classified classes
             b = (n + 1) // 2
             exception_cost += L(n, k, b)
 
@@ -277,9 +324,6 @@ class DTNode(object):
                 min_threshold = t
                 min_cost = exception_cost
         return min_threshold
-
-
-
 
 
 class BinaryContinuousMDLTreeClassifier(object):
@@ -312,7 +356,6 @@ class BinaryContinuousMDLTreeClassifier(object):
         self.tree = tree
         self._prune(verbose, print_full_pruning)
 
-
     def predict(self, input_data):
         """
         Classifies the given data according to the fitted tree
@@ -329,7 +372,8 @@ class BinaryContinuousMDLTreeClassifier(object):
             print("Tree cost before pruning: ", self.tree.get_recursive_cost())
         pruned = self.tree.prune(print_full)
         if pruned:
-            self.tree = DTLeaf(None, self.tree.input_data, self.tree.labels, self.tree.attr_continuous, self.max_depth, self.c)
+            self.tree = DTLeaf(None, self.tree.input_data, self.tree.labels, self.tree.attr_continuous, self.max_depth,
+                               self.c)
         if verbose:
             print("Tree cost after pruning: ", self.tree.get_recursive_cost())
 
