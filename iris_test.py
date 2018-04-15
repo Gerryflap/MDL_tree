@@ -23,6 +23,15 @@ train_Y = np.concatenate((np.zeros((X0.shape[0]//2, )), np.ones((X1.shape[0]//2,
 test_X = np.concatenate((X0[X0.shape[0]//2:], X1[X1.shape[0]//2:]))
 test_Y = np.concatenate((np.zeros((X0.shape[0]//2, )), np.ones((X1.shape[0]//2, ))))
 
+print("MDL Tree: ")
+tree = BinaryContinuousMDLTreeClassifier(1)
+tree.fit(train_X, train_Y, np.array([True] * 4), verbose=True)
+print("Train accuracy: ", np.sum(tree.predict(train_X) == train_Y) / train_X.shape[0])
+print("Test accuracy: ", np.sum(tree.predict(test_X) == test_Y) / test_X.shape[0])
+print(tree)
+print()
+
+
 
 for c in [0, 0.2, 0.5, 1, 2, 3, 5, 10, 100]:
     print("Tree for c = ", c)

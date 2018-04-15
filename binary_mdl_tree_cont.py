@@ -3,6 +3,20 @@ from scipy.special import comb
 
 lg = np.log2
 
+def categorical_to_int(data):
+    """
+    Changes array with categorical features (strings) to ints.
+        eg. column with attr values [a, b, c] will become a column with values [0, 1, 2]
+    :param data: Numpy array with categorical data
+    :return: numpy array with integer data
+    """
+    output = np.zeros(data.shape)
+    for column in range(data.shape[1]):
+        _, new = np.unique(data[:, column], return_inverse=True)
+        output[:, column] = new
+    return output
+
+
 
 def L(n, k, b):
     n, k, b = int(n), int(k), int(b)
