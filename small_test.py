@@ -8,7 +8,7 @@
 
     Class: N=0, P=1
 """
-from binary_mdl_tree import BinaryMDLTreeClassifier
+from binary_mdl_tree_cont import BinaryContinuousMDLTreeClassifier
 import numpy as np
 
 data = np.array(
@@ -35,8 +35,8 @@ Y = data[:, -1]
 
 for c in range(1, 10, 2):
     print("Tree for c=", c)
-    tree = BinaryMDLTreeClassifier(c, max_depth=1000)
-    tree.fit(X, Y, verbose=True, print_full_pruning=False)
+    tree = BinaryContinuousMDLTreeClassifier(c, max_depth=1000)
+    tree.fit(X, Y, np.array([False]*4), verbose=True, print_full_pruning=False)
     print(tree)
     print()
 
