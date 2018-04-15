@@ -3,11 +3,8 @@ import numpy as np
 from sklearn import tree as sktreelib
 
 data = np.genfromtxt("agaricus-lepiota.csv", delimiter=',', dtype=None)
-print(data)
 X = data[:, 1:]
 Y = data[:, 0]
-
-print(Y.shape)
 
 # Split the dataset into the two classes so it can be evenly split in test and train
 classes = np.unique(Y)
@@ -28,10 +25,8 @@ test_Y = np.concatenate((np.zeros((X0.shape[0]//2, )), np.ones((X1.shape[0]//2, 
 
 # Convert the strings to integer features for CART
 tr_X = categorical_to_int(train_X)
-print(tr_X)
 te_X = categorical_to_int(test_X)
 
-print(train_X.shape, test_X.shape)
 
 print("MDL tree:")
 tree = BinaryContinuousMDLTreeClassifier(1)

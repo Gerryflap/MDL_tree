@@ -1,0 +1,17 @@
+This file includes results from running the agaricus_test:
+
+Training for classes:  [b'e' b'p']
+MDL tree:
+Tree cost before pruning:  19908.2282353
+Tree cost after pruning:  170.557013448
+Train accuracy:  1.0
+Test accuracy:  1.0
+Tree size:  20
+<Node x[4] <Node x[18] <Leaf c:0 N:691> <Leaf c:0 N:647> <Leaf c:0 N:16> <Leaf c:1 N:33> <Node x[6] <Node x[10] <Leaf c:0 N:12> <Node x[3] <Leaf c:1 N:4> <Leaf c:0 N:11> > <Leaf c:1 N:13> > <Leaf c:0 N:256> > <Leaf c:0 N:17> <Leaf c:0 N:32> <Leaf c:0 N:20> > <Leaf c:1 N:137> <Leaf c:0 N:200> <Leaf c:1 N:296> <Leaf c:0 N:202> <Leaf c:1 N:15> <Leaf c:1 N:96> <Leaf c:1 N:299> <Leaf c:1 N:1065> >
+
+CART tree:
+Train accuracy:  1.0
+Test accuracy:  1.0
+Tree size:  35
+
+Process finished with exit code 0
