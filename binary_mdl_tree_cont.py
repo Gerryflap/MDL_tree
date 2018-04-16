@@ -290,8 +290,8 @@ class DTNode(object):
 
     def __str__(self):
         child_str = ""
-        for child in self.children.values():
-            child_str += str(child) + " "
+        for k, child in self.children.items():
+            child_str += str(k) + ": " + str(child) + " "
         if self.continuous:
             ret = "<Node x[%d]>=%f %s>" % (self.attr_index, self.threshold, child_str)
         else:
