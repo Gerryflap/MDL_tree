@@ -1,5 +1,6 @@
 from binary_mdl_tree_cont import BinaryContinuousMDLTreeClassifier
 import numpy as np
+from sklearn import tree as sktree
 
 data = np.genfromtxt("iris.csv", delimiter=',')
 print(data)
@@ -28,12 +29,22 @@ tree = BinaryContinuousMDLTreeClassifier(1)
 tree.fit(train_X, train_Y, np.array([True] * 4), verbose=True)
 print("Train accuracy: ", np.sum(tree.predict(train_X) == train_Y) / train_X.shape[0])
 print("Test accuracy: ", np.sum(tree.predict(test_X) == test_Y) / test_X.shape[0])
+print("Tree size: ", len(tree))
 print(tree)
 print()
 
 
+print("CART Tree: ")
+tree_cart = sktree.DecisionTreeClassifier()
+tree_cart.fit(train_X, train_Y)
+print("Train accuracy: ", np.sum(tree_cart.predict(train_X) == train_Y) / train_X.shape[0])
+print("Test accuracy: ", np.sum(tree_cart.predict(test_X) == test_Y) / test_X.shape[0])
+print("Tree size: ", tree_cart.tree_.node_count)
+print(tree_cart)
+print()
 
-for c in [0, 0.2, 0.5, 1, 2, 3, 5, 10, 100]:
+
+for c in [2, 5, 10, 2000]:
     print("Tree for c = ", c)
     tree = BinaryContinuousMDLTreeClassifier(c)
     tree.fit(train_X, train_Y, np.array([True]*4), verbose=True)

@@ -308,16 +308,20 @@ class DTNode(object):
         :return: The used threshold value
         """
         values = self.input_data[:, self.attr_index]
-        m = len(np.unique(values))
 
         sort = np.argsort(values)
         s_values = values[sort]
         s_labels = self.labels[sort]
+
+        u_values, u_indices = np.unique(s_values, return_index=True)
+        m = len(u_values)
+
         # threshold_values = np.mean(np.array([s_values[:-1], s_values[1:]]), axis=0)
-        threshold_values = s_values
+        threshold_values = u_values
         # Pick only sqrt(m) distinct values:
-        step_size = int(s_values.shape[0] // (m ** 0.5))
+        step_size = int(u_values.shape[0] // (m ** 0.5))
         threshold_values = threshold_values[::step_size]
+        threshold_indices = u_indices[::step_size]
 
         n_class_1 = np.sum(self.labels)
         n_class_0 = self.labels.shape[0] - n_class_1
@@ -326,7 +330,7 @@ class DTNode(object):
         min_threshold = None
 
         for i, t in enumerate(threshold_values):
-            label_index = i * step_size
+            label_index = threshold_indices[i]
             classes_left = np.zeros((2,))
             classes_left[1] = np.sum(s_labels[:label_index + 1])
             classes_left[0] = label_index - classes_left[1]
@@ -356,7 +360,7 @@ class DTNode(object):
         return min_threshold
 
     def __len__(self):
-        return sum([len(child) for child in self.children.values()])
+        return 1 + sum([len(child) for child in self.children.values()])
 
 
 class BinaryContinuousMDLTreeClassifier(object):
