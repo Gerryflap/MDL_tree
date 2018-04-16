@@ -293,7 +293,7 @@ class DTNode(object):
         for child in self.children.values():
             child_str += str(child) + " "
         if self.continuous:
-            ret = "<Node x[%d]>=%d %s>" % (self.attr_index, self.threshold, child_str)
+            ret = "<Node x[%d]>=%f %s>" % (self.attr_index, self.threshold, child_str)
         else:
             ret = "<Node x[%d] %s>" % (self.attr_index, child_str)
         return ret
