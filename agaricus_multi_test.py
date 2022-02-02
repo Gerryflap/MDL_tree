@@ -74,16 +74,18 @@ print(N_values)
 print("MDL: ", mdl_values)
 print("CART: ", cart_values)
 
-plt.plot(N_values, mdl_values[:,1])
-plt.plot(N_values, cart_values[:,1], color='red')
+plt.plot(N_values, mdl_values[:,1], label='MDL Tree')
+plt.plot(N_values, cart_values[:,1], color='red', label='CART (sklearn)')
 plt.xlabel("Training examples per class")
 plt.ylabel("Test accuracy on remaining data")
+plt.legend()
 plt.show()
 
-plt.plot(N_values, mdl_values[:,2])
-plt.plot(N_values, cart_values[:,2], color='red')
+plt.plot(N_values, mdl_values[:,2], label='MDL Tree')
+plt.plot(N_values, cart_values[:,2], color='red', label='CART (sklearn)')
 plt.xlabel("Training examples per class")
 plt.ylabel("Tree size (nodes)")
+plt.legend()
 plt.show()
 
 # for c in [0.01, 0.5, 1, 3, 5, 100]:
